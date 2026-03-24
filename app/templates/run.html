@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="intro run-header">
+    <h1>{{ run.payload.ticker }} • {{ run.payload.mode|upper }}</h1>
+    <p id="run-state">
+      State: <span class="badge state-{{ run.state }}">{{ run.state }}</span>
+      {% if run.best_score %}
+        <span class="score">Best: {{ run.best_score }}/100</span>
+      {% endif %}
+    </p>
+    {% if run.stop_reason %}
+      <p class="meta">Stop reason: {{ run.stop_reason }}</p>
+    {% endif %}
+  </section>
+
+  <section class="report" id="report-root">
+    {% if featured %}
+      <div class="report-grid">
+        <article class="report-lead">
+          <p class="eyebrow">Research packet</p>
+          <h2>Analyst note</h2>
+          <p class="lead-summary">{{ featured.artifact.summary }}</p>
+          <p class="lead-note">{{ featured.artifact.analyst_note }}</p>
+          <p class="lead-support" id="final-summary">{{ run.summary if run.summary else "Summary will appear once completion criteria are met." }}</p>
+        </article>
+
+        <aside class="report-score">
+          <p class="eyebrow">Best iteration</p>
+          <h2>{{ featured.index }}</h2>
+          <div class="pill-row">
+            <span>Score {{ featured.scorecard.total }}/100</span>
+            <span>Grounding {{ featured.scorecard.factual_grounding }}/25</span>
+            <span>KPI {{ featured.scorecard.kpi_completeness }}/15</span>
+            <span>Guidance {{ featured.scorecard.guidance_capture }}/15</span>
+            <span>Peers {{ featured.scorecard.peer_relevance }}/15</span>
+          </div>
+        </aside>
+      </div>
+
+      <div class="report-card agentic-panel">
+        <div class="section-head section-head-tight">
+          <div>
+            <p class="eyebrow">Agentic researcher</p>
+            <h2>Research team</h2>
+          </div>
+        </div>
+        <div class="agent-grid" id="agent-grid">
+          {% set agent_briefs = featured.artifact.agent_briefs %}
+          {% if not agent_briefs %}
+            {% set agent_briefs = [
+              {
+                "name": "Source Scout",
+                "role": "Pulls market context and recent public coverage.",
+                "status": "completed",
+                "detail": "Collected available market observations and linked news coverage."
+              },
+              {
+                "name": "Filing Tracker",
+                "role": "Maps the ticker to SEC coverage and recent forms.",
+                "status": "completed",
+                "detail": "Attached recent SEC filing coverage when available."
+              },
+              {
+                "name": "Document Reader",
+                "role": "Reads filing text and extracts evidence snippets.",
+                "status": "completed",
+                "detail": "Attached filing-text evidence where it was available."
+              },
+              {
+                "name": "Peer Mapper",
+                "role": "Builds the comparable set and role for each peer.",
+                "status": "completed",
+                "detail": "Prepared the comparison set shown in the report."
+              },
+              {
+                "name": "Note Writer",
+                "role": "Assembles the packet with evidence and linked sources.",
+                "status": "completed",
+                "detail": "Built the report sections now shown above."
+              }
+            ] %}
+          {% endif %}
+          {% for agent in agent_briefs %}
+            <article class="agent-card">
+              <div class="agent-card-top">
+                <strong>{{ agent.name }}</strong>
+                <span class="badge state-{{ 'completed' if agent.status == 'completed' else 'pending' }}">{{ agent.status }}</span>
+              </div>
+              <p class="agent-role">{{ agent.role }}</p>
+              <p class="agent-detail">{{ agent.detail }}</p>
+            </article>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="report-columns report-columns-wide">
+        <section class="report-card">
+          <h2>Evidence ledger</h2>
+          <div class="evidence-list" id="evidence-list">
+            {% set evidence_items = featured.artifact.evidence_items %}
+            {% if not evidence_items %}
+              {% set evidence_items = [
+                {
+                  "agent": "Source Scout",
+                  "claim": "Public market context was collected for this run.",
+                  "support": "Older run format did not persist snippet-level evidence, so only the high-level packet is available here.",
+                  "source_label": "Stored run artifact",
+                  "source_url": None
+                }
+              ] %}
+            {% endif %}
+            {% for evidence in evidence_items %}
+              <article class="evidence-item">
+                <p class="evidence-agent">{{ evidence.agent }}</p>
+                <h3>{{ evidence.claim }}</h3>
+                <p>{{ evidence.support }}</p>
+                <p class="evidence-source">
+                  {% if evidence.source_url %}
+                    <a href="{{ evidence.source_url }}" target="_blank" rel="noreferrer">{{ evidence.source_label }}</a>
+                  {% else %}
+                    <span>{{ evidence.source_label }}</span>
+                  {% endif %}
+                </p>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="report-card">
+          <h2>Agent trace</h2>
+          <div class="trace-list" id="trace-list">
+            {% set agent_actions = featured.artifact.agent_actions %}
+            {% if not agent_actions %}
+              {% set agent_actions = [
+                {
+                  "agent": "Source Scout",
+                  "tool": "stored run artifact",
+                  "status": "completed",
+                  "output": "Older run format did not persist the detailed task trace."
+                }
+              ] %}
+            {% endif %}
+            {% for action in agent_actions %}
+              <article class="trace-item">
+                <div class="trace-top">
+                  <strong>{{ action.agent }}</strong>
+                  <span class="badge state-{{ 'completed' if action.status == 'completed' else 'pending' }}">{{ action.status }}</span>
+                </div>
+                <p class="trace-tool">{{ action.tool }}</p>
+                <p class="trace-output">{{ action.output }}</p>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+
+      <div class="report-columns">
+        <section class="report-card">
+          <h2>KPI snapshot</h2>
+          <table class="data-table" id="kpi-table">
+            <tbody>
+              {% for row in featured.artifact.kpi_table %}
+                <tr>
+                  <th>{{ row.metric }}</th>
+                  <td>{{ row.value }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </section>
+
+        <section class="report-card">
+          <h2>Valuation view</h2>
+          <p id="valuation-summary">{{ featured.artifact.valuation_summary }}</p>
+          <h3>Guidance context</h3>
+          <p id="guidance-notes">{{ featured.artifact.guidance_notes }}</p>
+          <h3>Risks and catalysts</h3>
+          <p id="risks-and-catalysts">{{ featured.artifact.risks_and_catalysts }}</p>
+        </section>
+      </div>
+
+      <div class="report-columns">
+        <section class="report-card">
+          <h2>Peer set</h2>
+          <div class="peer-list" id="peer-list">
+            {% for peer in featured.artifact.peer_table %}
+              <article class="peer-item">
+                <strong>{{ peer.ticker }}</strong>
+                <span>{{ peer.thesis_role }}</span>
+                <p>{{ peer.comment }}</p>
+              </article>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="report-card">
+          <h2>Sources used</h2>
+          <ul class="sources-list" id="sources-list">
+            {% for citation in featured.artifact.citations %}
+              <li>
+                {% if citation.startswith("http") %}
+                  <a href="{{ citation }}" target="_blank" rel="noreferrer">{{ citation }}</a>
+                {% else %}
+                  <span>{{ citation }}</span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      </div>
+    {% else %}
+      <div class="empty">
+        <h3>Run queued</h3>
+        <p>The autonomous loop is preparing the first research packet.</p>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="history">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Diagnostics</p>
+        <h2>Iteration history</h2>
+      </div>
+      <a class="cta cta-secondary" href="/">Start another run</a>
+    </div>
+    <div id="iterations">
+      {% if iterations %}
+        {% for item in iterations %}
+          <article class="iteration-card">
+            <header>
+              <h3>Iteration {{ item.index }}</h3>
+              <span class="score">{{ item.scorecard.total }}/100</span>
+            </header>
+            <p>{{ item.artifact.summary }}</p>
+            <div class="pill-row">
+              <span>Grounding {{ item.scorecard.factual_grounding }}/25</span>
+              <span>KPI {{ item.scorecard.kpi_completeness }}/15</span>
+              <span>Guidance {{ item.scorecard.guidance_capture }}/15</span>
+              <span>Peers {{ item.scorecard.peer_relevance }}/15</span>
+            </div>
+            {% if item.scorecard.major_issues %}
+              <ul>
+                {% for issue in item.scorecard.major_issues %}
+                  <li>{{ issue }}</li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+          </article>
+        {% endfor %}
+      {% else %}
+        <div class="empty">
+          <h3>Run queued</h3>
+          <p>The autonomous loop is preparing its first iteration.</p>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <script>
+    window.AUTO_RESEARCH_RUN = "{{ run.run_id }}";
+  </script>
+  <script src="/static/app.js"></script>
+{% endblock %}

@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <section class="intro stagger" style="--i: 0;">
+    <h1>Run an agentic equity researcher on one company.</h1>
+    <p>
+      Use this page to assemble a public-source research draft with KPI snapshot, peer context,
+      valuation view, and source links before you refine the investment view.
+    </p>
+  </section>
+
+  <section class="purpose stagger" style="--i: 1;">
+    <article>
+      <p class="eyebrow">What it does</p>
+      <h2>Creates a research draft, not a final recommendation.</h2>
+      <p>
+        Best for liquid US names where public filings, market data, and recent news are easy to
+        verify quickly.
+      </p>
+    </article>
+    <article>
+      <p class="eyebrow">What you should expect</p>
+      <h2>Fast first pass, transparent sources.</h2>
+      <p>
+        The output is strongest when you treat it as a starting packet: check the sources, tighten
+        the thesis, and improve the note.
+      </p>
+    </article>
+  </section>
+
+  <section class="purpose purpose-agents stagger" style="--i: 2;">
+    <article>
+      <p class="eyebrow">Agent 1</p>
+      <h2>Source Scout</h2>
+      <p>Pulls price action, recent coverage, and public market context for the company.</p>
+    </article>
+    <article>
+      <p class="eyebrow">Agent 2</p>
+      <h2>Filing Tracker</h2>
+      <p>Maps the ticker to SEC coverage and gathers recent filing activity for the packet.</p>
+    </article>
+    <article>
+      <p class="eyebrow">Agent 3</p>
+      <h2>Document Reader</h2>
+      <p>Reads filing text and pulls snippet-level evidence from the primary SEC documents.</p>
+    </article>
+    <article>
+      <p class="eyebrow">Agent 4</p>
+      <h2>Peer Mapper</h2>
+      <p>Builds a comparable set from your peer list and sector context.</p>
+    </article>
+    <article>
+      <p class="eyebrow">Agent 5</p>
+      <h2>Note Writer</h2>
+      <p>Assembles the research draft, KPI table, valuation view, and linked sources.</p>
+    </article>
+  </section>
+
+  <section class="composer stagger" style="--i: 3;">
+    <form method="post" action="/runs" class="run-form">
+      <div class="field-grid">
+        <label>
+          <span>Ticker</span>
+          <input name="ticker" required placeholder="AAPL" maxlength="12" />
+        </label>
+
+        <label>
+          <span>Mode</span>
+          <select name="mode">
+            <option value="review">Post-earnings update</option>
+            <option value="preview">Earnings preview</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Event date (optional)</span>
+          <input type="date" name="event_date" value="{{ today }}" />
+        </label>
+      </div>
+      <p class="field-help">
+        If unknown, leave it as-is. The run will still work and uses today by default.
+      </p>
+
+      <label>
+        <span>Comparison tickers (optional)</span>
+        <input name="peer_set" placeholder="MSFT, GOOGL, AMZN" />
+        <small class="label-help">Add the companies you want compared in the peer section. Leave blank to let the app suggest a set.</small>
+      </label>
+
+      <label>
+        <span>Your starting view (optional)</span>
+        <textarea
+          name="prior_view"
+          rows="3"
+          placeholder="Example: I want to test whether margins can hold up and whether guidance still looks strong."
+        ></textarea>
+        <small class="label-help">Use this if you already have an angle, question, or early thesis you want the researcher to keep in mind.</small>
+      </label>
+
+      <div class="form-foot">
+        <button type="submit" class="cta">Run agentic researcher</button>
+        <p>Uses public market data, SEC filing coverage, and recent news links.</p>
+      </div>
+    </form>
+  </section>
+
+  <section class="history stagger" style="--i: 4;">
+    <h2>Recent runs</h2>
+    {% if runs %}
+      <ul class="runs-list">
+        {% for run in runs %}
+          <li>
+            <a href="/runs/{{ run.run_id }}">
+              <strong>{{ run.payload.ticker }}</strong>
+              <span>{{ run.payload.mode }}</span>
+              <span class="badge state-{{ run.state }}">{{ run.state }}</span>
+              {% if run.best_score %}
+                <span class="score">{{ run.best_score }}/100</span>
+              {% endif %}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="empty">
+        <h3>No runs yet</h3>
+        <p>Create the first run to generate your initial analyst packet.</p>
+      </div>
+    {% endif %}
+  </section>
+{% endblock %}

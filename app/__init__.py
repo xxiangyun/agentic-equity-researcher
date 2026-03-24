@@ -1,0 +1,2 @@
+"""AutoEarningsResearch application package."""
+

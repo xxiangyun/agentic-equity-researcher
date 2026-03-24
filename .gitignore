@@ -1,0 +1,9 @@
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+data/app.db
+data/runs/
+soak_runner.py
+soak_runner.log
+soak_nohup.out
