@@ -1,87 +1,74 @@
-# AutoEarningsResearch
+# Agentic Equity Researcher
 
-Agentic equity research prototype for one ticker at a time.
+Agentic equity research app for one ticker at a time.
 
 ![App screenshot](docs/app-fullscreen.png)
 
-## Does it need API keys?
+## What it does
 
-No. The current build runs without OpenAI keys or third-party finance API keys.
+This app runs a research workflow for a single public company in either `preview` or `review` mode and produces a research packet in the browser.
 
-It uses:
+The packet includes:
+
+- an analyst note
+- a KPI snapshot
+- a valuation view
+- comparison tickers
+- linked source references
+- an evidence ledger
+- an agent trace
+
+## What it uses
+
+The current build does **not** need OpenAI keys or third-party finance API keys.
+
+It runs on:
 
 - public Yahoo Finance access through `yfinance`
 - public SEC endpoints
-- a local FastAPI server running the research workflow
+- a local FastAPI server that runs the workflow in the background
 
-## What this app actually does
+## How it works
 
-- Runs a multi-step research workflow for a single ticker in `preview` or `review` mode.
-- Pulls public market context from Yahoo Finance via `yfinance`.
-- Pulls SEC ticker mapping and recent filing metadata from the SEC submissions API.
-- Fetches primary SEC filing documents for supported forms and extracts filing-text snippets.
-- For `8-K` filings, attempts to follow the linked `Exhibit 99` earnings-release document and use that text as evidence.
-- Builds a research packet with:
-  - analyst note
-  - KPI snapshot
-  - valuation view
-  - peer set
-  - source links
-  - evidence ledger
-  - agent trace
-- Scores each iteration against a fixed rubric and stops on target score, stagnation, or max iterations.
+When you submit the form on the homepage, the app:
 
-## What the UI shows
+1. creates a run in the local database
+2. starts a background research job on the FastAPI server
+3. collects market context, SEC filings, and linked news
+4. extracts structured facts and filing snippets
+5. builds a research packet
+6. scores the result against a fixed rubric
+7. iterates until it hits a stop rule
+8. keeps the best-scoring version and shows it on the run page
 
-Homepage:
+The run page then shows:
 
-- a short explanation of what the app is for
-- visible research agents
-- run form
-- recent runs
-
-Run page:
-
-- research packet first
-- research team
-- evidence ledger with snippet-level filing evidence when available
-- agent trace
+- the research packet first
+- the research team
+- the evidence ledger with filing snippets when available
+- the agent trace
 - iteration history as secondary diagnostics
 
 ## Current research agents
 
 - `Source Scout`: market history and linked news
 - `Filing Tracker`: SEC mapping and recent forms
-- `Document Reader`: filing-text and `Exhibit 99` snippet extraction
+- `Document Reader`: filing text and `Exhibit 99` snippet extraction
 - `Peer Mapper`: comparable set construction
 - `Note Writer`: final packet assembly
 
-## Public data sources in use
+## Public data sources
 
 - Yahoo Finance `fast_info`
 - Yahoo Finance price history
 - Yahoo Finance linked news feed
 - SEC `company_tickers.json`
 - SEC submissions JSON feed
-- SEC primary filing documents from EDGAR archives
+- SEC filing documents from EDGAR archives
 
-## Honest limitations
+## Good tickers to try
 
-- This is not a Bloomberg-quality research stack.
-- It does not yet ingest full earnings call transcripts.
-- It does not yet do claim extraction from transcript text.
-- Valuation is still lightweight and should be read as directional context, not a full model.
-- Filing snippet quality depends on what recent SEC documents are available for the ticker.
-- Some tickers will still surface weak evidence if their recent filings are mostly insider forms or administrative filings.
-
-## Good tickers for the current build
-
-Large US names work best because they usually have:
-
-- active SEC coverage
-- stable Yahoo price history
-- recent linked news
-- recognizable peer sets
+The current app works best with large US companies that have active SEC coverage and stable public market data.
 
 Examples:
 
@@ -91,14 +78,18 @@ Examples:
 - `JPM`
 - `XOM`
 
-## Stop rules
+## Running locally
 
-- `max_iterations = 5`
-- `target_score = 85`
-- `min_improvement = 2`
-- `patience = 2`
+Recommended with `uv`:
 
-## Quick start
+```bash
+uv sync --extra dev
+uv run uvicorn app.main:app --reload
+```
+
+Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+Fallback without `uv`:
 
 ```bash
 python3 -m venv .venv
@@ -107,9 +98,15 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000)
+## Running tests
 
-## Tests
+Recommended with `uv`:
+
+```bash
+uv run pytest -q
+```
+
+Fallback:
 
 ```bash
 source .venv/bin/activate
@@ -128,7 +125,26 @@ Available settings in code right now:
 - `AUTO_RESEARCH_MIN_IMPROVEMENT`
 - `AUTO_RESEARCH_PATIENCE`
 
+## Stop rules
+
+Default run controls:
+
+- `max_iterations = 5`
+- `target_score = 85`
+- `min_improvement = 2`
+- `patience = 2`
+
+## Current limitations
+
+- This is not a Bloomberg-quality research stack.
+- It does not yet ingest full earnings call transcripts.
+- It does not yet use an LLM.
+- Valuation is still lightweight and should be read as directional context, not a full model.
+- Filing snippet quality depends on what recent SEC documents are available for the ticker.
+- Some tickers will still produce weak evidence if their recent filings are mostly insider forms or administrative filings.
+
 ## Notes
 
+- `uv` is the recommended way to run the project and the repo now includes a `pyproject.toml`.
 - SEC requests work better with a real contactable user-agent string.
 - The README only documents behavior that is implemented in the current codebase.
