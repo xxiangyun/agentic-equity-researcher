@@ -21,7 +21,7 @@ function renderFeatured(featured, summary) {
     return `
       <div class="empty">
         <h3>Run queued</h3>
-        <p>The autonomous loop is preparing the first research packet.</p>
+        <p>The simple research loop is preparing the first packet.</p>
       </div>
     `;
   }
@@ -276,7 +276,7 @@ async function refreshRun() {
       listNode.innerHTML = `
         <div class="empty">
           <h3>Run queued</h3>
-          <p>The autonomous loop is preparing its first iteration.</p>
+          <p>The simple research loop is preparing its first pass.</p>
         </div>
       `;
     } else {

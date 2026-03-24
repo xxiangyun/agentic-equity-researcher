@@ -18,6 +18,20 @@ The packet includes:
 - an evidence ledger
 - an agent trace
 
+## Design goal
+
+The agent loop is intentionally simple.
+
+This project is closer to a fixed research pipeline than a general-purpose autonomous planner:
+
+1. collect public sources
+2. extract structured facts and filing snippets
+3. draft the packet
+4. optionally let GPT-5.4 rewrite the narrative sections
+5. score the result and retry a small number of times
+
+That keeps the behavior easier to inspect, debug, and explain in a portfolio setting.
+
 ## What it uses
 
 The app can run in two modes:
@@ -42,7 +56,7 @@ When you submit the form on the homepage, the app:
 5. builds a research packet
 6. if an OpenAI key is configured, sends the structured facts and evidence bundle to GPT-5.4 through the Responses API
 7. scores the result against a fixed rubric
-8. iterates until it hits a stop rule
+8. retries a few times with the same fixed loop
 9. keeps the best-scoring version and shows it on the run page
 
 The run page then shows:
@@ -60,6 +74,10 @@ The run page then shows:
 - `Document Reader`: filing text and `Exhibit 99` snippet extraction
 - `Peer Mapper`: comparable set construction
 - `Note Writer`: final packet assembly, with GPT-5.4 synthesis when configured
+
+## Reference
+
+This project is informed by [virattt/dexter](https://github.com/virattt/dexter), which describes itself as an autonomous financial research agent with task planning, autonomous execution, self-validation, and loop safety. Our implementation is intentionally much simpler: fixed research steps, fixed data sources, fixed scoring, and a small retry budget instead of an open-ended planning loop.
 
 ## Public data sources
 
