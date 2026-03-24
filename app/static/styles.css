@@ -305,6 +305,10 @@ textarea:focus-visible {
   background: color-mix(in oklab, var(--surface), var(--good) 16%);
 }
 
+.state-limited {
+  background: color-mix(in oklab, var(--surface), oklch(72% 0.12 82) 28%);
+}
+
 .state-failed {
   background: color-mix(in oklab, var(--surface), var(--bad) 18%);
 }

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,7 +17,14 @@ class Settings(BaseSettings):
     target_score: int = 85
     min_improvement: int = 2
     patience: int = 2
+    openai_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("AUTO_RESEARCH_OPENAI_API_KEY", "OPENAI_API_KEY"),
+    )
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_model: str = "gpt-5.4"
+    openai_reasoning_effort: str = "medium"
+    openai_timeout_seconds: float = 45.0
 
 
 settings = Settings()
-

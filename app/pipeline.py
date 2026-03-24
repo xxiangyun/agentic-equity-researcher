@@ -43,6 +43,9 @@ class AutoResearchRunner:
         self.storage = storage
         self.run_dir = run_dir
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        self._llm_api_key = (settings.openai_api_key or "").strip()
+        self._llm_enabled = bool(self._llm_api_key)
+        self._llm_model = settings.openai_model
 
     async def execute(self, run_id: str, run_input: RunInput, config: RunConfig) -> None:
         self.storage.update_run_state(run_id, state=RunState.RUNNING)
@@ -63,6 +66,13 @@ class AutoResearchRunner:
             latest_sources = await self._collect_sources(run_input, iteration)
             latest_facts = self._extract_facts(run_input, latest_sources, iteration)
             artifact = self._build_artifact(run_input, latest_facts, latest_sources, iteration)
+            artifact = await self._maybe_enrich_artifact_with_llm(
+                run_input=run_input,
+                facts=latest_facts,
+                sources=latest_sources,
+                artifact=artifact,
+                iteration=iteration,
+            )
             scorecard = self._evaluate(artifact, latest_sources, latest_facts, iteration)
             revision = self._propose_revision(scorecard, iteration)
 
@@ -482,9 +492,14 @@ class AutoResearchRunner:
             ),
             AgentBrief(
                 name="Note Writer",
-                role="Assembles the packet with evidence and linked sources.",
+                role="Synthesizes the packet with evidence and linked sources.",
                 status="completed",
-                detail=f"Built {len(kpi_table)} KPI rows and attached {len([c for c in citations if c])} source anchors.",
+                detail=(
+                    f"Prepared deterministic draft inputs for {len(kpi_table)} KPI rows and "
+                    f"{len([c for c in citations if c])} source anchors."
+                    if self._llm_enabled
+                    else f"Built {len(kpi_table)} KPI rows and attached {len([c for c in citations if c])} source anchors."
+                ),
             ),
         ]
 
@@ -526,9 +541,13 @@ class AutoResearchRunner:
             ),
             AgentAction(
                 agent="Note Writer",
-                tool="packet assembler",
+                tool="OpenAI Responses API" if self._llm_enabled else "packet assembler",
                 status="completed",
-                output=f"Rendered the report with {len(evidence_items)} evidence items and {len(citations)} source anchors.",
+                output=(
+                    f"Prepared source bundle for {self._llm_model} synthesis with {len(evidence_items)} evidence items."
+                    if self._llm_enabled
+                    else f"Rendered the report with {len(evidence_items)} evidence items and {len(citations)} source anchors."
+                ),
             ),
         ]
 
@@ -545,6 +564,281 @@ class AutoResearchRunner:
             agent_actions=agent_actions,
             evidence_items=evidence_items,
         )
+
+    async def _maybe_enrich_artifact_with_llm(
+        self,
+        run_input: RunInput,
+        facts: dict[str, Any],
+        sources: dict[str, Any],
+        artifact: IterationArtifact,
+        iteration: int,
+    ) -> IterationArtifact:
+        if not self._llm_enabled:
+            return artifact
+
+        try:
+            sections = await self._generate_llm_sections(
+                run_input=run_input,
+                facts=facts,
+                sources=sources,
+                artifact=artifact,
+                iteration=iteration,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._with_note_writer_fallback(artifact, f"LLM synthesis unavailable, fallback used: {type(exc).__name__}.")
+
+        merged_peer_table = self._merge_peer_table(artifact.peer_table, sections.get("peer_table"))
+        return artifact.model_copy(
+            update={
+                "summary": sections.get("summary", artifact.summary),
+                "analyst_note": sections.get("analyst_note", artifact.analyst_note),
+                "guidance_notes": sections.get("guidance_notes", artifact.guidance_notes),
+                "valuation_summary": sections.get("valuation_summary", artifact.valuation_summary),
+                "risks_and_catalysts": sections.get("risks_and_catalysts", artifact.risks_and_catalysts),
+                "peer_table": merged_peer_table,
+                "agent_briefs": self._replace_note_writer_brief(
+                    artifact.agent_briefs,
+                    status="completed",
+                    detail=f"Synthesized the packet with {self._llm_model} from structured facts and evidence snippets.",
+                ),
+                "agent_actions": self._replace_note_writer_action(
+                    artifact.agent_actions,
+                    status="completed",
+                    tool=f"OpenAI Responses API ({self._llm_model})",
+                    output=(
+                        f"Generated the narrative packet from {len(artifact.evidence_items)} evidence items "
+                        f"and {len(artifact.citations)} source anchors."
+                    ),
+                ),
+            }
+        )
+
+    async def _generate_llm_sections(
+        self,
+        run_input: RunInput,
+        facts: dict[str, Any],
+        sources: dict[str, Any],
+        artifact: IterationArtifact,
+        iteration: int,
+    ) -> dict[str, Any]:
+        headers = {
+            "Authorization": f"Bearer {self._llm_api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self._llm_model,
+            "reasoning": {"effort": settings.openai_reasoning_effort},
+            "input": [
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                "You are a sell-side equity research writing assistant. "
+                                "Use only the supplied facts, evidence snippets, and source summaries. "
+                                "Do not invent metrics, transcript details, price targets, or recommendations. "
+                                "If a field is weakly supported, say so plainly. "
+                                "Return valid JSON only with keys: "
+                                "summary, analyst_note, guidance_notes, valuation_summary, "
+                                "risks_and_catalysts, peer_table. "
+                                "peer_table must be a JSON array of objects with ticker, thesis_role, and comment."
+                            ),
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": json.dumps(
+                                self._build_llm_payload(
+                                    run_input=run_input,
+                                    facts=facts,
+                                    sources=sources,
+                                    artifact=artifact,
+                                    iteration=iteration,
+                                ),
+                                indent=2,
+                            ),
+                        }
+                    ],
+                },
+            ],
+        }
+
+        timeout = httpx.Timeout(settings.openai_timeout_seconds)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(f"{settings.openai_base_url}/responses", headers=headers, json=payload)
+            response.raise_for_status()
+            raw = self._extract_response_text(response.json())
+        return self._parse_llm_json(raw)
+
+    def _build_llm_payload(
+        self,
+        run_input: RunInput,
+        facts: dict[str, Any],
+        sources: dict[str, Any],
+        artifact: IterationArtifact,
+        iteration: int,
+    ) -> dict[str, Any]:
+        news_items = [
+            {
+                "title": item.get("title", ""),
+                "url": item.get("url", ""),
+                "published": item.get("published", ""),
+            }
+            for item in sources.get("news", [])[:6]
+        ]
+        filing_snippets = [
+            {
+                "form": item.get("form", ""),
+                "date": item.get("date", ""),
+                "description": item.get("description", ""),
+                "snippet": item.get("snippet", ""),
+                "document_url": item.get("document_url", ""),
+            }
+            for item in sources.get("sec", {}).get("filing_snippets", [])[:3]
+        ]
+        filing_records = [
+            {
+                "form": item.get("form", ""),
+                "date": item.get("date", ""),
+                "description": item.get("description", ""),
+            }
+            for item in sources.get("sec", {}).get("filings", [])[:8]
+        ]
+        return {
+            "task": {
+                "ticker": run_input.ticker.upper(),
+                "mode": run_input.mode.value,
+                "event_date": run_input.event_date.isoformat(),
+                "iteration": iteration,
+                "starting_view": run_input.prior_view,
+            },
+            "facts": facts,
+            "kpi_table": artifact.kpi_table,
+            "current_peer_table": artifact.peer_table,
+            "current_summary": artifact.summary,
+            "current_analyst_note": artifact.analyst_note,
+            "evidence_items": [item.model_dump(mode="json") for item in artifact.evidence_items[:8]],
+            "filing_records": filing_records,
+            "filing_snippets": filing_snippets,
+            "news_items": news_items,
+            "source_labels": artifact.citations[:12],
+        }
+
+    @staticmethod
+    def _extract_response_text(payload: dict[str, Any]) -> str:
+        if isinstance(payload.get("output_text"), str) and payload["output_text"].strip():
+            return payload["output_text"]
+
+        output = payload.get("output", [])
+        for item in output:
+            if item.get("type") != "message":
+                continue
+            for content in item.get("content", []):
+                text = content.get("text")
+                if isinstance(text, str) and text.strip():
+                    return text
+        raise ValueError("OpenAI response did not contain text output.")
+
+    @staticmethod
+    def _parse_llm_json(raw_text: str) -> dict[str, Any]:
+        candidate = raw_text.strip()
+        if candidate.startswith("```"):
+            candidate = re.sub(r"^```(?:json)?\s*", "", candidate)
+            candidate = re.sub(r"\s*```$", "", candidate)
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            start = candidate.find("{")
+            end = candidate.rfind("}")
+            if start == -1 or end == -1 or end <= start:
+                raise
+            return json.loads(candidate[start : end + 1])
+
+    def _with_note_writer_fallback(self, artifact: IterationArtifact, detail: str) -> IterationArtifact:
+        return artifact.model_copy(
+            update={
+                "agent_briefs": self._replace_note_writer_brief(
+                    artifact.agent_briefs,
+                    status="limited",
+                    detail=detail,
+                ),
+                "agent_actions": self._replace_note_writer_action(
+                    artifact.agent_actions,
+                    status="limited",
+                    tool=f"OpenAI Responses API ({self._llm_model})",
+                    output=detail,
+                ),
+            }
+        )
+
+    @staticmethod
+    def _replace_note_writer_brief(
+        briefs: list[AgentBrief],
+        *,
+        status: str,
+        detail: str,
+    ) -> list[AgentBrief]:
+        updated: list[AgentBrief] = []
+        for brief in briefs:
+            if brief.name == "Note Writer":
+                updated.append(brief.model_copy(update={"status": status, "detail": detail}))
+            else:
+                updated.append(brief)
+        return updated
+
+    @staticmethod
+    def _replace_note_writer_action(
+        actions: list[AgentAction],
+        *,
+        status: str,
+        tool: str,
+        output: str,
+    ) -> list[AgentAction]:
+        updated: list[AgentAction] = []
+        for action in actions:
+            if action.agent == "Note Writer":
+                updated.append(
+                    action.model_copy(
+                        update={
+                            "status": status,
+                            "tool": tool,
+                            "output": output,
+                        }
+                    )
+                )
+            else:
+                updated.append(action)
+        return updated
+
+    @staticmethod
+    def _merge_peer_table(
+        current_peers: list[dict[str, str]],
+        llm_peers: Any,
+    ) -> list[dict[str, str]]:
+        if not isinstance(llm_peers, list):
+            return current_peers
+        by_ticker = {item.get("ticker", ""): item for item in current_peers}
+        merged: list[dict[str, str]] = []
+        for item in llm_peers:
+            if not isinstance(item, dict):
+                continue
+            ticker = str(item.get("ticker", "")).upper().strip()
+            if not ticker:
+                continue
+            fallback = by_ticker.get(ticker, {"ticker": ticker, "thesis_role": "comparison", "comment": ""})
+            merged.append(
+                {
+                    "ticker": ticker,
+                    "thesis_role": str(item.get("thesis_role") or fallback.get("thesis_role") or "comparison"),
+                    "comment": str(item.get("comment") or fallback.get("comment") or "Peer included for comparative context."),
+                }
+            )
+        return merged or current_peers
 
     def _evaluate(
         self,
@@ -654,11 +948,12 @@ class AutoResearchRunner:
         sources: dict[str, Any],
         facts: dict[str, Any],
     ) -> str:
+        synthesis_mode = f" using {self._llm_model}" if self._llm_enabled else " without LLM synthesis"
         return (
             f"Completed {run_input.mode.value} run for {run_input.ticker.upper()} with best score "
             f"{best_score}/100 at iteration {best_iteration}. Stop reason: {stop_reason}. "
             f"Processed {len(sources.get('news', []))} news items and "
-            f"{len(sources.get('sec', {}).get('filings', []))} SEC filings. "
+            f"{len(sources.get('sec', {}).get('filings', []))} SEC filings{synthesis_mode}. "
             f"Primary sector context: {facts.get('sector', 'unknown')}."
         )
 

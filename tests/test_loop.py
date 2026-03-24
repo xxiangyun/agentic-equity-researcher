@@ -87,6 +87,77 @@ class ScriptedRunner(AutoResearchRunner):
         return RevisionPlan(focus_areas=["test"], actions=["test"])
 
 
+class LLMRunner(AutoResearchRunner):
+    def __init__(self, storage: Storage, run_dir: Path) -> None:
+        super().__init__(storage=storage, run_dir=run_dir)
+        self._llm_enabled = True
+        self._llm_model = "gpt-5.4"
+
+    async def _collect_sources(self, run_input: RunInput, iteration: int):  # noqa: ANN001
+        return {
+            "news": [{"title": "Revenue outlook in focus", "url": "https://example.com/news", "published": "2026-03-24"}],
+            "history": [{"date": "2026-03-01", "close": "100.0", "volume": "1"}, {"date": "2026-03-24", "close": "110.0", "volume": "1"}],
+            "info": {"marketCap": 1000000, "sector": "Technology", "shortName": "Apple Inc."},
+            "sec": {
+                "filings": [{"form": "8-K", "date": "2026-03-20", "description": "Current report"}],
+                "filing_snippets": [
+                    {
+                        "form": "8-K",
+                        "date": "2026-03-20",
+                        "description": "Current report",
+                        "snippet": "Revenue increased year over year and management reiterated margin discipline.",
+                        "document_url": "https://example.com/8k",
+                    }
+                ],
+                "submissions_url": "https://example.com/submissions",
+            },
+            "citations": ["Yahoo Finance history", "SEC submissions feed"],
+        }
+
+    def _extract_facts(self, run_input: RunInput, sources, iteration: int):  # noqa: ANN001
+        return {
+            "company_name": "Apple Inc.",
+            "sector": "Technology",
+            "industry": "Consumer Electronics",
+            "kpis": {
+                "market_cap": "$1,000,000",
+                "last_price": "$110.00",
+                "six_month_return": "+10.00%",
+                "volatility_30d": "12.00%",
+                "beta": "1.10",
+                "trailing_pe": "24.00",
+                "forward_pe": "22.00",
+                "dividend_yield": "0.50%",
+                "average_volume": "1,000,000",
+            },
+            "peers": ["MSFT", "GOOGL", "AMZN"],
+            "guidance_bullets": ["Captured one filing snippet.", "Reviewed one recent news item."],
+            "mode": run_input.mode.value,
+            "event_date": run_input.event_date.isoformat(),
+        }
+
+    async def _generate_llm_sections(self, run_input: RunInput, facts, sources, artifact, iteration: int):  # noqa: ANN001
+        return {
+            "summary": f"GPT summary for {run_input.ticker.upper()} iteration {iteration}.",
+            "analyst_note": "GPT-5.4 synthesized the note from the supplied public sources.",
+            "guidance_notes": "Management tone remained constructive in the supplied filing snippet.",
+            "valuation_summary": "GPT-5.4 framed valuation as a directional cross-check, not a full model.",
+            "risks_and_catalysts": "Key watch items are demand durability, margins, and guidance follow-through.",
+            "peer_table": [
+                {
+                    "ticker": "MSFT",
+                    "thesis_role": "quality benchmark",
+                    "comment": "Used as a profitability and quality comparison anchor.",
+                },
+                {
+                    "ticker": "GOOGL",
+                    "thesis_role": "growth benchmark",
+                    "comment": "Used as a growth and ad-cycle comparison point.",
+                },
+            ],
+        }
+
+
 def _seed_run(storage: Storage, run_id: str) -> tuple[RunInput, RunConfig]:
     run_input = RunInput(
         ticker="AAPL",
@@ -131,3 +202,25 @@ async def test_stagnation_stops_and_retains_best_iteration(tmp_path: Path) -> No
     assert run.best_score == 71
     assert run.best_iteration == 2
     assert len(iterations) == 3
+
+
+@pytest.mark.asyncio
+async def test_llm_note_writer_updates_packet_and_trace(tmp_path: Path) -> None:
+    storage = Storage(tmp_path / "app.db")
+    runner = LLMRunner(storage, tmp_path / "runs")
+    run_input, config = _seed_run(storage, run_id="llm-run")
+    config = RunConfig(max_iterations=2, target_score=1, min_improvement=2, patience=2)
+
+    await runner.execute("llm-run", run_input, config)
+    run = storage.get_run("llm-run")
+    iterations = storage.list_iterations("llm-run")
+
+    assert run is not None
+    assert run.stop_reason == "target_score_reached"
+    assert len(iterations) == 1
+    artifact = iterations[0].artifact
+    note_writer = next(item for item in artifact.agent_actions if item.agent == "Note Writer")
+    assert artifact.analyst_note == "GPT-5.4 synthesized the note from the supplied public sources."
+    assert artifact.summary == "GPT summary for AAPL iteration 1."
+    assert note_writer.tool == "OpenAI Responses API (gpt-5.4)"
+    assert note_writer.status == "completed"

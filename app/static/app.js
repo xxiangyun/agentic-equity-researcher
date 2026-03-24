@@ -1,5 +1,12 @@
 const runId = window.AUTO_RESEARCH_RUN;
 
+function statusClass(status) {
+  if (["completed", "limited", "failed", "running", "pending"].includes(status)) {
+    return status;
+  }
+  return "pending";
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -113,7 +120,7 @@ function renderFeatured(featured, summary) {
         <article class="agent-card">
           <div class="agent-card-top">
             <strong>${escapeHtml(agent.name)}</strong>
-            <span class="badge state-${agent.status === "completed" ? "completed" : "pending"}">${escapeHtml(agent.status)}</span>
+            <span class="badge state-${statusClass(agent.status)}">${escapeHtml(agent.status)}</span>
           </div>
           <p class="agent-role">${escapeHtml(agent.role)}</p>
           <p class="agent-detail">${escapeHtml(agent.detail)}</p>
@@ -161,7 +168,7 @@ function renderFeatured(featured, summary) {
         <article class="trace-item">
           <div class="trace-top">
             <strong>${escapeHtml(action.agent)}</strong>
-            <span class="badge state-${action.status === "completed" ? "completed" : "pending"}">${escapeHtml(action.status)}</span>
+            <span class="badge state-${statusClass(action.status)}">${escapeHtml(action.status)}</span>
           </div>
           <p class="trace-tool">${escapeHtml(action.tool)}</p>
           <p class="trace-output">${escapeHtml(action.output)}</p>

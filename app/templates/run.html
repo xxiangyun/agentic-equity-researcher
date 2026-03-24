@@ -85,7 +85,7 @@
             <article class="agent-card">
               <div class="agent-card-top">
                 <strong>{{ agent.name }}</strong>
-                <span class="badge state-{{ 'completed' if agent.status == 'completed' else 'pending' }}">{{ agent.status }}</span>
+                <span class="badge state-{{ agent.status if agent.status in ['completed', 'limited', 'failed', 'running'] else 'pending' }}">{{ agent.status }}</span>
               </div>
               <p class="agent-role">{{ agent.role }}</p>
               <p class="agent-detail">{{ agent.detail }}</p>
@@ -145,7 +145,7 @@
               <article class="trace-item">
                 <div class="trace-top">
                   <strong>{{ action.agent }}</strong>
-                  <span class="badge state-{{ 'completed' if action.status == 'completed' else 'pending' }}">{{ action.status }}</span>
+                  <span class="badge state-{{ action.status if action.status in ['completed', 'limited', 'failed', 'running'] else 'pending' }}">{{ action.status }}</span>
                 </div>
                 <p class="trace-tool">{{ action.tool }}</p>
                 <p class="trace-output">{{ action.output }}</p>

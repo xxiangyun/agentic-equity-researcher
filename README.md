@@ -20,9 +20,12 @@ The packet includes:
 
 ## What it uses
 
-The current build does **not** need OpenAI keys or third-party finance API keys.
+The app can run in two modes:
 
-It runs on:
+- public-data mode with no OpenAI key
+- GPT-5.4 synthesis mode when `AUTO_RESEARCH_OPENAI_API_KEY` or `OPENAI_API_KEY` is set
+
+Both modes run on:
 
 - public Yahoo Finance access through `yfinance`
 - public SEC endpoints
@@ -37,9 +40,10 @@ When you submit the form on the homepage, the app:
 3. collects market context, SEC filings, and linked news
 4. extracts structured facts and filing snippets
 5. builds a research packet
-6. scores the result against a fixed rubric
-7. iterates until it hits a stop rule
-8. keeps the best-scoring version and shows it on the run page
+6. if an OpenAI key is configured, sends the structured facts and evidence bundle to GPT-5.4 through the Responses API
+7. scores the result against a fixed rubric
+8. iterates until it hits a stop rule
+9. keeps the best-scoring version and shows it on the run page
 
 The run page then shows:
 
@@ -55,7 +59,7 @@ The run page then shows:
 - `Filing Tracker`: SEC mapping and recent forms
 - `Document Reader`: filing text and `Exhibit 99` snippet extraction
 - `Peer Mapper`: comparable set construction
-- `Note Writer`: final packet assembly
+- `Note Writer`: final packet assembly, with GPT-5.4 synthesis when configured
 
 ## Public data sources
 
@@ -88,6 +92,15 @@ uv run uvicorn app.main:app --reload
 ```
 
 Then open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+To enable GPT-5.4 synthesis:
+
+```bash
+export AUTO_RESEARCH_OPENAI_API_KEY=your_key_here
+uv run uvicorn app.main:app --reload
+```
+
+The app also accepts the standard `OPENAI_API_KEY` environment variable.
 
 Fallback without `uv`:
 
@@ -124,6 +137,11 @@ Available settings in code right now:
 - `AUTO_RESEARCH_TARGET_SCORE`
 - `AUTO_RESEARCH_MIN_IMPROVEMENT`
 - `AUTO_RESEARCH_PATIENCE`
+- `AUTO_RESEARCH_OPENAI_API_KEY`
+- `AUTO_RESEARCH_OPENAI_BASE_URL`
+- `AUTO_RESEARCH_OPENAI_MODEL`
+- `AUTO_RESEARCH_OPENAI_REASONING_EFFORT`
+- `AUTO_RESEARCH_OPENAI_TIMEOUT_SECONDS`
 
 ## Stop rules
 
@@ -138,7 +156,7 @@ Default run controls:
 
 - This is not a Bloomberg-quality research stack.
 - It does not yet ingest full earnings call transcripts.
-- It does not yet use an LLM.
+- GPT-5.4 currently powers narrative synthesis only; source retrieval and scoring remain local workflow steps.
 - Valuation is still lightweight and should be read as directional context, not a full model.
 - Filing snippet quality depends on what recent SEC documents are available for the ticker.
 - Some tickers will still produce weak evidence if their recent filings are mostly insider forms or administrative filings.
