@@ -2,6 +2,8 @@
 
 Agentic equity research prototype for one ticker at a time.
 
+![App screenshot](docs/app-fullscreen.png)
+
 ## Does it need API keys?
 
 No. The current build runs without OpenAI keys or third-party finance API keys.

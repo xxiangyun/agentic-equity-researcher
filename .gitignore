@@ -2,6 +2,7 @@
 .pytest_cache/
 __pycache__/
 *.pyc
+.DS_Store
 data/app.db
 data/runs/
 soak_runner.py
